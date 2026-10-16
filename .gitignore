@@ -1,0 +1,21 @@
+# Local files
+.DS_Store
+._*
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Private source materials and learning records
+runs/
+learning-workspace/
+TASK_CARD.md
+*.mp4
+*.mov
+*.docx
+*.skill
+*.zip
