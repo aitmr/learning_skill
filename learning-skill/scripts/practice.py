@@ -78,6 +78,7 @@ def initialize(args, cards):
     data = {"schema_version": 1, "topic": args.topic, "goal": args.goal,
             "started_on": today.isoformat(), "cards_sha256": card_hash(cards),
             "learner_level": "unknown", "diagnosis_status": "pending",
+            "review_policy": args.review_policy or "legacy-intervals",
             "next_action": args.next_action,
             "cards": {c["id"]: {"status": "untested", "success_streak": 0,
                                     "next_due": None, "attempts": []} for c in cards}}
@@ -99,6 +100,16 @@ def record(args, cards):
     dates = [state["started_on"]] + [x["date"] for x in card["attempts"]]
     if today < date.fromisoformat(max(dates)):
         raise ValueError("作答日期不能早于学习开始或这道题已有的作答。")
+    policy = args.review_policy or state.get("review_policy", "legacy-intervals")
+    if state.get("review_policy", "legacy-intervals") != policy:
+        if policy != "stage-three":
+            raise ValueError("月度阶段复习不能自动切回旧间隔；请保留历史并明确迁移。")
+        state.setdefault("review_policy_history", []).append({
+            "changed_on": today.isoformat(), "from": state.get("review_policy", "legacy-intervals"),
+            "to": policy, "previous_due": {key: value.get("next_due") for key, value in state["cards"].items()}})
+        for progress in state["cards"].values():
+            progress["next_due"] = None
+    state["review_policy"] = policy
     # Multiple attempts on one day do not count as spaced-repetition successes.
     already_passed_today = any(a["date"] == today.isoformat() and a["score"] >= 3
                                and a["support"] == "independent" for a in card["attempts"])
@@ -117,11 +128,13 @@ def record(args, cards):
             for a in card["attempts"])
         card["status"] = "application_evidence" if passed_application else "recalled"
         delay = INTERVALS[min(card["success_streak"] - 1, len(INTERVALS) - 1)]
-    card["next_due"] = (today + timedelta(days=delay)).isoformat()
+    card["next_due"] = (today + timedelta(days=delay)).isoformat() if policy == "legacy-intervals" else None
     card["attempts"].append({"date": today.isoformat(), "kind": args.kind, "score": args.score,
                              "answer": answer, "feedback": feedback,
                              "support": args.support, "evidence_file": str(args.answer_file.resolve())})
-    state["next_action"] = f"复习 {args.card}，计划日期 {card['next_due']}；结合本次反馈决定下一项练习。"
+    state["next_action"] = (f"复习 {args.card}，计划日期 {card['next_due']}；结合本次反馈决定下一项练习。"
+                            if policy == "legacy-intervals" else
+                            f"{args.card} 的真实证据已保存；按 program.json 的阶段三遍复习和缺口队列续学。")
     write_json(args.state, state)
     return {"card": args.card, "status": card["status"], "next_due": card["next_due"],
             "note": "题目证据已保存；整体能力级别需教练另行诊断。"}
@@ -162,8 +175,10 @@ def main():
             sub.add_argument("--topic", required=True)
             sub.add_argument("--goal", required=True)
             sub.add_argument("--date", required=True, help="用户当地日期 YYYY-MM-DD")
-            sub.add_argument("--next-action", default="开始第一道诊断题，等待用户回答。")
+            sub.add_argument("--next-action", default="开始第一轮四道诊断题，等待用户回答。")
+            sub.add_argument("--review-policy", choices=("legacy-intervals", "stage-three"))
         elif command == "record":
+            sub.add_argument("--review-policy", choices=("legacy-intervals", "stage-three"))
             sub.add_argument("--card", required=True)
             sub.add_argument("--date", required=True)
             sub.add_argument("--score", type=int, choices=range(5), required=True)

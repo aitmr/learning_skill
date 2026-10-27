@@ -1,4 +1,4 @@
 interface:
   display_name: "学习教练"
-  short_description: "只给关键词即可检索知识并开始学习，持续记录单题反馈、实践证据与复习"
-  default_prompt: "使用 $learning-skill 教我学习这个关键词，自动收集可靠资料，先诊断水平，每次只问一道题。"
+  short_description: "关键词启动五轮诊断与月度课程，每日测试雷达图，阶段检验复盘和三遍复习"
+  default_prompt: "使用 $learning-skill 教我学习这个主题；职业求职先查真实岗位，再结合五轮各四题诊断给月计划，按每日测试和雷达图持续学习。"

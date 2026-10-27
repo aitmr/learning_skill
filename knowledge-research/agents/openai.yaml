@@ -1,4 +1,4 @@
 interface:
   display_name: "知识检索与收集"
-  short_description: "从关键词精确检索原始资料，核对证据并提取可教的知识点与前置关系"
-  default_prompt: "使用 $knowledge-research 从关键词检索资料、核对知识点，并交给 learning-skill 开始学习。"
+  short_description: "精确查找并核对知识资料，为前沿与就业学习做每日联网和豆包内容补充"
+  default_prompt: "使用 $knowledge-research 检索这个主题；职业求职先查 BOSS 直聘、类似平台及大厂官方岗位，再核对知识资料并用我的豆包补充，交给 learning-skill。"

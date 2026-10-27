@@ -142,6 +142,29 @@ class HelperTests(unittest.TestCase):
         self.cards.write_text(json.dumps([card]))
         self.cli("practice.py", "validate", "--cards", self.cards, "--source", source, ok=False)
 
+    def test_stage_policy_records_evidence_without_parallel_legacy_due_dates(self):
+        self.cli("practice.py", "init", "--cards", self.cards, "--state", self.state,
+                 "--topic", "隔离测试", "--goal", "测试证据", "--date", "2026-10-14",
+                 "--review-policy", "stage-three")
+        self.record("2026-10-14", 3)
+        self.assertIsNone(self.progress()["next_due"])
+        self.assertEqual(len(self.progress()["attempts"]), 1)
+        self.assertEqual(json.loads(self.state.read_text())["review_policy"], "stage-three")
+
+    def test_switching_old_policy_keeps_answers_and_archives_all_old_due_dates(self):
+        self.init()
+        self.record("2026-10-14", 3)
+        old = json.loads(self.state.read_text())
+        self.cli("practice.py", "record", "--cards", self.cards, "--state", self.state,
+                 "--card", "C1", "--date", "2026-10-15", "--score", 3, "--kind", "recall",
+                 "--support", "independent", "--answer-file", self.answer,
+                 "--feedback-file", self.feedback, "--review-policy", "stage-three")
+        new = json.loads(self.state.read_text())
+        self.assertEqual(new["cards"]["C1"]["attempts"][0], old["cards"]["C1"]["attempts"][0])
+        self.assertEqual(new["review_policy_history"][0]["previous_due"]["C1"], "2026-10-15")
+        self.assertIsNone(new["cards"]["C1"]["next_due"])
+        self.assertEqual(len(new["cards"]["C1"]["attempts"]), 2)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

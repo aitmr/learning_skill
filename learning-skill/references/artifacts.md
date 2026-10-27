@@ -1,6 +1,6 @@
 # 学习成果与工具约定
 
-生成学习包、提取材料、保存进度或导出复习卡时读本文件。
+生成学习包、提取材料、保存进度或导出复习卡时读本文件。保存位置先遵循 ~/.codex/learning-storage.md；本机学习记录写入已确认的 Obsidian 主题目录。月度主流程与每日雷达图优先读 [cycle-tools.md](cycle-tools.md)，本文件保留材料提取和题级历史的兼容用法。
 
 ## 轻量学习目录
 
@@ -48,7 +48,7 @@
 
 ```bash
 "$PYTHON_BIN" "$SKILL_DIR/scripts/practice.py" validate --cards "/实际路径/cards.json" --source "/实际路径/source/source.json"
-"$PYTHON_BIN" "$SKILL_DIR/scripts/practice.py" init --cards "/实际路径/cards.json" --state "/实际路径/learning-state.json" --topic "当前主题" --goal "可验证的成果" --date "2026-10-14"
+"$PYTHON_BIN" "$SKILL_DIR/scripts/practice.py" init --cards "/实际路径/cards.json" --state "/实际路径/learning-state.json" --topic "当前主题" --goal "可验证的成果" --date "2026-10-23" --review-policy stage-three
 ```
 
 `init` 不覆盖已有状态。它将能力设为 `unknown`、诊断设为 `pending`；所有题目未测试，没有成绩，也没有到期日期。不要手工将空记录补成通过。
@@ -58,12 +58,12 @@
 用户实际回答后，将回答原文和教练反馈保存成 UTF-8 文本。按教学评分约定给 0–4 分，再记录。`support` 必须标记独立完成、使用提示、参考答案或 AI 辅助。
 
 ```bash
-"$PYTHON_BIN" "$SKILL_DIR/scripts/practice.py" record --cards "/实际路径/cards.json" --state "/实际路径/learning-state.json" --card C01 --date "2026-10-14" --score 2 --kind explanation --support independent --answer-file "/实际路径/用户回答.txt" --feedback-file "/实际路径/本次反馈.txt"
+"$PYTHON_BIN" "$SKILL_DIR/scripts/practice.py" record --cards "/实际路径/cards.json" --state "/实际路径/learning-state.json" --card C01 --date "2026-10-23" --review-policy stage-three --score 2 --kind explanation --support independent --answer-file "/实际路径/用户回答.txt" --feedback-file "/实际路径/本次反馈.txt"
 ```
 
 脚本追加历史并原子替换状态文件，避免写到一半损坏。不会替用户回答或评分，不会自动把 `learner_level` 改为已掌握。诊断结束后的整体级别、待答题、作品和下一步由教练依据证据维护。
 
-分数不足 3 时下次安排在翌日；独立完成且分数至少 3 时沿 1、3、7、14、30 天间隔推进。同一天重复答对不扩大间隔。使用提示、参考答案或 AI 辅助的结果保留为练习记录，待独立复测。日期必须显式传入用户当地日期，不依赖运行主机时区。
+月度主流程 init／record 显式传 --review-policy stage-three：只保存题级证据，日期由 program.json 的三遍阶段复习统一管理。旧政策 legacy-intervals 才在分数不足 3 时安排翌日、独立通过时沿 1、3、7、14、30 天推进；此为历史兼容，不用于新月度课。同一天重复答对不扩大间隔。使用提示、参考答案或 AI 辅助的结果保留为练习记录，待独立复测。日期必须显式传入用户当地日期，不依赖运行主机时区。
 
 ## 导出复习卡
 

@@ -214,6 +214,9 @@ def export(packet, path, out):
                "packet_path": str(path.resolve()), "cards_path": str(card_file.resolve()),
                "teaching_order": order, "first_diagnostic_question": packet["handoff"]["first_diagnostic_question"],
                "learner_level": "unknown", "diagnosis_status": "pending",
+               "learning_protocol": {"diagnosis_rounds": 5, "questions_per_round": 4,
+                                     "plan_period": "calendar-month", "routine_reviews_per_part": 3,
+                                     "career_plan_requires_job_research": True},
                "gap_ids": [g["id"] for g in packet["gaps"]], "next_skill": "learning-skill"}
     files = {"资料索引.md": "\n".join(catalog), "知识地图.md": "\n".join(graph) + "\n",
              "知识点明细.md": "\n".join(detail), "待核对事项.md": "\n".join(gaps),

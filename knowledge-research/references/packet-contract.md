@@ -57,8 +57,10 @@ coverage 的 covered 方向关联实际 ready 知识点；gap 和 not-needed 写
 
 验证拒绝无效引用、读取范围不符、重复来源、同源转载冒充独立证据、依赖循环和未证实内容进入教学。通过后人工读回再导出资料索引、知识地图、知识点明细、待核对事项、cards.json 与 handoff.json。明细含回答要点，现场不应贴给用户泄露答案。
 
-handoff 指向知识包和卡片，保留范围、排序后的知识点、pending 水平与一道诊断题。教练读取后进入单题反馈、五级阶梯、小成果和复习。用户无需拼接两个 skill。
+handoff 指向知识包和卡片，保留范围、排序后的知识点、pending 水平与一个候选诊断题。该字段只供教练选题，不覆盖五轮各四题诊断协议；教练读取后执行现行月度流程，日常教学保留单题反馈、五级阶梯与小成果。用户无需拼接两个 skill。
 
 导出题库的 origin 为 supplement，source_refs 为空数组；另有 knowledge_point_id、external_refs（URL、定位、claim_id）和 answer_criteria，兼容 practice.py。来源由 knowledge_packet.py 核对；practice.py 只管练习状态。
 
 研究更新保留旧包或另建 revision 目录。题目变化后保留旧题库和真实作答状态，不能绕过 practice.py 的 hash 检查覆盖成绩。
+
+新导出的 handoff 追加 learning_protocol（5 轮、每轮 4 题、月周期、每部分常规复习 3 遍）。保留 schema_version=1 和旧字段以兼容既有研究包；新教练对旧包也执行现行规则。该协议不含用户回答、分数或诊断完成状态。新增 career_plan_requires_job_research=true，表示职业求职正式计划另须原始 JD 岗位调研；对普通学科不生效。岗位调研路径与范围在求职交接时一并传递，知识包本身不能证明岗位调研已完成。

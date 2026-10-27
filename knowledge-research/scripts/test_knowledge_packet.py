@@ -50,6 +50,10 @@ class PacketTests(unittest.TestCase):
         self.assertEqual(cards[0]["origin"], "supplement")
         handoff = json.loads((out / "handoff.json").read_text())
         self.assertEqual(handoff["learner_level"], "unknown")
+        self.assertEqual(handoff["learning_protocol"]["diagnosis_rounds"], 5)
+        self.assertEqual(handoff["learning_protocol"]["questions_per_round"], 4)
+        self.assertEqual(handoff["learning_protocol"]["routine_reviews_per_part"], 3)
+        self.assertTrue(handoff["learning_protocol"]["career_plan_requires_job_research"])
         self.assertNotIn("attempts", handoff)
         self.assertIn("测试解释", (out / "知识点明细.md").read_text())
 
