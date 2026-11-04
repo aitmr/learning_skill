@@ -293,9 +293,11 @@ def validate(data, root, as_of):
             require(assessment.get('type') == 'stage' and assessment.get('status') == 'completed'
                     and assessment.get('actual_date') == actual, '阶段完成必须有当日整体检验与复盘')
             if mode == 'adaptive-two':
-                require(any(p['kind'] == 'capstone' and p['stage_id'] == stage['id'] and
-                            p['status'] == 'verified' for p in projects.values()),
-                        '新课程阶段完成还需独立验收综合大作业')
+                stage_projects = [p for p in projects.values() if p['stage_id'] == stage['id']]
+                require(any(p['kind'] == 'capstone' and p['status'] == 'verified'
+                            for p in stage_projects) and
+                        all(p['status'] == 'verified' for p in stage_projects),
+                        '新课程阶段完成需要全部作业和综合大作业的独立验收')
     reviews = indexed(data['reviews'], '复习'); counts = {}; review_days = set()
     for item in sorted(reviews.values(), key=lambda x: (x['date'], x['id'])):
         pid = item['part_id']
