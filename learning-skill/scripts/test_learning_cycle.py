@@ -30,6 +30,7 @@ class CycleTests(unittest.TestCase):
         return eid
 
     def full_diagnosis(self):
+        self.state['diagnosis']['mode'] = 'legacy-five'
         for r in range(1, 6):
             questions = []
             for q in range(1, 5):
@@ -42,6 +43,7 @@ class CycleTests(unittest.TestCase):
         self.state['diagnosis']['status'] = 'complete'
 
     def completed_stage(self):
+        self.state['diagnosis']['mode'] = 'legacy-five'
         self.state['lessons'] = [{'id': 'L1', 'stage_id': 'S1', 'pass_score': 3}]
         self.state['parts'] = [{'id': 'P1', 'stage_id': 'S1'}]
         self.state['stages'] = [{'id': 'S1', 'title': '隔离阶段', 'lesson_ids': ['L1'],
@@ -53,6 +55,112 @@ class CycleTests(unittest.TestCase):
         self.state['assessments'] = [{'id': 'AS1', 'type': 'stage', 'status': 'completed',
                                      'due_date': '2026-10-23', 'actual_date': '2026-10-23',
                                      'evidence_ids': ['ST1'], 'retrospective_path': 'ST1-反馈.md'}]
+
+
+    def adaptive_diagnosis(self):
+        self.evidence('P1', kind='profile', score=None)
+        self.evidence('D1', kind='diagnostic')
+        self.evidence('D2', kind='diagnostic')
+        self.state['diagnosis'] = {
+            'mode': 'adaptive-two', 'status': 'complete',
+            'rounds': [
+                {'number': 1, 'questions': [
+                    {'id': 'Q1', 'prompt': '真实项目目标与经验', 'kind': 'profile', 'evidence_id': 'P1'},
+                    {'id': 'Q2', 'prompt': '独立提出最小方案', 'kind': 'ability', 'evidence_id': 'D1'},
+                ], 'summary': '发现关键卡点'},
+                {'number': 2, 'questions': [
+                    {'id': 'Q3', 'prompt': '根据第一轮卡点换条件实践', 'kind': 'ability',
+                     'evidence_id': 'D2'},
+                ], 'summary': '记录能力边界'},
+            ],
+        }
+
+    def adaptive_final_plan(self):
+        self.adaptive_diagnosis()
+        self.state['priorities'] = [
+            {'id': f'P{i}', 'skill': f'高杠杆能力{i}', 'reason': '影响作品质量和迁移',
+             'next_output': '独立完成不同条件下的成果'} for i in (1, 2)
+        ]
+        self.state['lessons'] = [{
+            'id': 'L1', 'stage_id': 'S1', 'pass_score': 3, 'objective': '做出最小可用成果',
+            'knowledge_point_ids': ['K1'], 'practice': '完成并解释选择', 'minutes': 30,
+        }]
+        self.state['stages'] = [{
+            'id': 'S1', 'title': '第一模块', 'lesson_ids': ['L1'],
+            'completed_on': None, 'assessment_id': 'AS1',
+        }]
+        self.state['projects'] = [{
+            'id': f'J{i}', 'stage_id': 'S1', 'lesson_id': 'L1',
+            'kind': 'small' if i < 3 else 'capstone',
+            'status': 'planned', 'title': f'挑战作业{i}', 'objective': '完成真实输出',
+            'decision': '用户独立选择关键实现方案', 'acceptance': '可复核的质量标准',
+            'budget': '30分钟、零付费',
+        } for i in (1, 2, 3)]
+        self.state['cycle']['plan_status'] = 'final'
+        for entry in self.state['cycle']['days']:
+            entry['objective'] = '学习、实践、检验或复习'
+
+    def test_new_courses_default_to_two_round_diagnosis(self):
+        self.assertEqual(self.state['diagnosis']['mode'], 'adaptive-two')
+        self.adaptive_diagnosis()
+        result = validate(self.state, self.root, self.as_of)
+        self.assertTrue(result['diagnosis_complete'])
+        self.assertEqual(result['diagnosis_mode'], 'adaptive-two')
+        self.state['diagnosis']['rounds'][1]['questions'][0]['evidence_id'] = None
+        self.state['diagnosis']['status'] = 'pending'
+        self.assertFalse(validate(self.state, self.root, self.as_of)['diagnosis_complete'])
+
+    def test_new_two_rounds_require_actual_second_round_ability_task(self):
+        self.adaptive_diagnosis()
+        self.state['diagnosis']['rounds'][1]['questions'][0]['kind'] = 'profile'
+        with self.assertRaisesRegex(ValueError, '第二轮'):
+            validate(self.state, self.root, self.as_of)
+
+    def test_legacy_five_rounds_without_mode_still_work(self):
+        self.full_diagnosis()
+        self.state['diagnosis'].pop('mode')
+        result = validate(self.state, self.root, self.as_of)
+        self.assertEqual(result['diagnosis_mode'], 'legacy-five')
+        self.assertTrue(result['diagnosis_complete'])
+
+    def test_new_final_plan_requires_priorities_and_small_plus_capstone_tasks(self):
+        self.adaptive_final_plan()
+        self.assertTrue(validate(self.state, self.root, self.as_of)['diagnosis_complete'])
+        saved = self.state['priorities']
+        self.state['priorities'] = []
+        with self.assertRaisesRegex(ValueError, '高杠杆'):
+            validate(self.state, self.root, self.as_of)
+        self.state['priorities'] = saved
+        self.state['projects'].pop()
+        with self.assertRaisesRegex(ValueError, '综合大作业'):
+            validate(self.state, self.root, self.as_of)
+
+    def test_stage_needs_all_real_artifacts_and_independent_capstone_review(self):
+        self.adaptive_final_plan()
+        self.evidence('TEST1', kind='daily-test')
+        self.evidence('STAGE1', kind='stage-test')
+        self.state['daily'] = [{
+            'date': '2026-10-23', 'refresh': {'status': 'not-required'},
+            'completed_lessons': [{'lesson_id': 'L1', 'test_evidence_ids': ['TEST1']}],
+        }]
+        self.state['assessments'] = [{
+            'id': 'AS1', 'type': 'stage', 'due_date': '2026-10-23',
+            'status': 'completed', 'actual_date': '2026-10-23',
+            'evidence_ids': ['STAGE1'], 'retrospective_path': 'STAGE1-反馈.md',
+        }]
+        self.state['stages'][0]['completed_on'] = '2026-10-23'
+        with self.assertRaisesRegex(ValueError, '全部作业'):
+            validate(self.state, self.root, self.as_of)
+        for task in self.state['projects']:
+            eid = 'PROOF-' + task['id']
+            self.evidence(eid, kind='project', score=3)
+            task.update(status='verified', artifact_path=eid + '-回答.md',
+                        review_path=eid + '-反馈.md', evidence_ids=[eid])
+        result = validate(self.state, self.root, self.as_of)
+        self.assertEqual(result['verified_capstones'], 1)
+        self.state['evidence'][-1]['support'] = 'ai-assisted'
+        with self.assertRaisesRegex(ValueError, '独立表现'):
+            validate(self.state, self.root, self.as_of)
 
     def test_month_length_and_audio_calendar_do_not_follow_lesson_numbers(self):
         state = initialize('模拟', 'career', date(2026, 10, 23))
