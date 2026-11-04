@@ -39,8 +39,9 @@ def calendar_days(start, anchor, track):
             for i in range((end - start).days + 1)]
 
 
-def initialize(topic, track, start, job_seeking=False):
+def initialize(topic, track, start, job_seeking=False, diagnosis_mode='adaptive-two'):
     require(not job_seeking or track == 'career', '职业求职用途须使用 career 分类')
+    require(diagnosis_mode in ('adaptive-two', 'legacy-five'), '诊断模式无效')
     return {'schema_version': 2, 'topic': topic, 'track': track,
             'job_seeking': job_seeking,
             'recording_started_on': start.isoformat(),
@@ -51,7 +52,8 @@ def initialize(topic, track, start, job_seeking=False):
                       'rubric': ['关键判断错误或不能完成', '术语或步骤有明显混淆',
                                  '主干正确但缺条件', '独立完成且关键条件正确', '能迁移并说明边界']}
                      for i, label in enumerate(LABELS)],
-            'diagnosis': {'status': 'pending', 'rounds': []},
+            'diagnosis': {'mode': diagnosis_mode, 'status': 'pending', 'rounds': []},
+            'priorities': [], 'projects': [],
             'career_research': {'status': 'pending'} if job_seeking else None,
             'parts': [], 'lessons': [], 'stages': [], 'evidence': [],
             'daily': [], 'assessments': [], 'reviews': [], 'gaps': []}
@@ -124,12 +126,22 @@ def validate(data, root, as_of):
         return [evidence[i] for i in ids]
 
     diagnosis = data['diagnosis']; rounds = diagnosis['rounds']
-    require(isinstance(rounds, list) and len(rounds) <= 5, '诊断最多五轮')
+    # Historical programs have no mode field: preserve their original five-round semantics.
+    mode = diagnosis.get('mode', 'legacy-five')
+    require(mode in ('adaptive-two', 'legacy-five'), '诊断模式无效')
+    expected_rounds = 2 if mode == 'adaptive-two' else 5
+    require(isinstance(rounds, list) and len(rounds) <= expected_rounds, '诊断轮次超出当前模式')
     question_ids, finished = set(), True
     for number, current in enumerate(rounds, 1):
         require(finished and current['number'] == number, '前轮未答完或轮次顺序不一致')
         questions = current['questions']
-        require(len(questions) == 4, '每轮恰好四题')
+        if mode == 'legacy-five':
+            require(len(questions) == 4, '旧课程每轮恰好四题')
+        else:
+            require(1 <= len(questions) <= 4, '两轮自适应诊断每轮需要 1–4 项')
+            if number == 2:
+                require(any(q.get('kind') == 'ability' for q in questions),
+                        '第二轮必须包含根据第一轮设计的能力任务')
         finished = True
         for question in questions:
             require(question.get('id') and question['id'] not in question_ids and question.get('prompt'), '诊断题缺失或重复')
@@ -147,9 +159,9 @@ def validate(data, root, as_of):
                             '能力诊断需要实际评分的任务证据，不能用目标画像充数')
         if finished:
             require(current.get('summary'), '已完成的诊断轮需要反馈小结')
-    complete = len(rounds) == 5 and finished
+    complete = len(rounds) == expected_rounds and finished
     require(diagnosis['status'] == ('complete' if complete else 'pending'), '诊断状态与真实回答不一致')
-    require(cycle['plan_status'] != 'final' or complete, '五轮诊断未完成，只能标为暂定计划')
+    require(cycle['plan_status'] != 'final' or complete, '诊断未完成，只能标为暂定计划')
     if data.get('job_seeking') and cycle['plan_status'] == 'final':
         research = data.get('career_research')
         require(isinstance(research, dict) and research.get('status') == 'ready',
@@ -178,6 +190,40 @@ def validate(data, root, as_of):
     used_answers = [q['evidence_id'] for r in rounds for q in r['questions'] if q.get('evidence_id')]
     require(len(used_answers) == len(set(used_answers)), '不能重复使用一份证据充多个诊断回答')
     stages = indexed(data['stages'], '阶段'); lessons = indexed(data['lessons'], '课程'); parts = indexed(data['parts'], '知识部分')
+    priorities = indexed(data.get('priorities', []), '核心优先能力')
+    projects = indexed(data.get('projects', []), '输出作业')
+    if mode == 'adaptive-two' and cycle['plan_status'] == 'final':
+        require(2 <= len(priorities) <= 4, '新课程正式计划必须选出 2–4 项高杠杆核心能力')
+        require(stages, '新课程正式计划需要至少一个项目阶段')
+    for priority in priorities.values():
+        require(all(isinstance(priority.get(field), str) and priority[field].strip()
+                    for field in ('skill', 'reason', 'next_output')),
+                '核心能力需要名称、优先原因及可验证的下一项输出')
+    for project in projects.values():
+        require(project.get('stage_id') in stages, '输出作业需要有效阶段')
+        lesson_id = project.get('lesson_id')
+        require(lesson_id is None or (lesson_id in lessons and
+                lessons[lesson_id]['stage_id'] == project['stage_id']), '输出作业关联课程无效')
+        require(project.get('kind') in ('small', 'capstone'), '作业类型须为 small 或 capstone')
+        require(project.get('status') in ('planned', 'submitted', 'verified'), '作业状态无效')
+        if cycle['plan_status'] == 'final':
+            require(all(isinstance(project.get(field), str) and project[field].strip()
+                        for field in ('title', 'objective', 'decision', 'acceptance', 'budget')),
+                    '正式作业需要名称、目标、独立决策、验收标准和预算')
+        if project['status'] in ('submitted', 'verified'):
+            note(root, project.get('artifact_path'))
+        if project['status'] == 'verified':
+            note(root, project.get('review_path'))
+            proof = refs(project.get('evidence_ids'))
+            require(all(e.get('support') == 'independent' and e.get('score') is not None
+                        and e['score'] >= 3 for e in proof),
+                    '作业验收必须有真实独立表现且达到 3 分的证据')
+    if mode == 'adaptive-two' and cycle['plan_status'] == 'final':
+        for stage_id in stages:
+            tasks = [p for p in projects.values() if p['stage_id'] == stage_id]
+            require(sum(p['kind'] == 'small' for p in tasks) >= 2 and
+                    any(p['kind'] == 'capstone' for p in tasks),
+                    '新课程每阶段至少需要两个小作业与一个综合大作业')
     for part in parts.values():
         require(part.get('stage_id') in stages, '知识部分需要所属阶段')
     for lesson in lessons.values():
@@ -246,6 +292,10 @@ def validate(data, root, as_of):
             aid = stage.get('assessment_id'); assessment = assessments.get(aid, {})
             require(assessment.get('type') == 'stage' and assessment.get('status') == 'completed'
                     and assessment.get('actual_date') == actual, '阶段完成必须有当日整体检验与复盘')
+            if mode == 'adaptive-two':
+                require(any(p['kind'] == 'capstone' and p['stage_id'] == stage['id'] and
+                            p['status'] == 'verified' for p in projects.values()),
+                        '新课程阶段完成还需独立验收综合大作业')
     reviews = indexed(data['reviews'], '复习'); counts = {}; review_days = set()
     for item in sorted(reviews.values(), key=lambda x: (x['date'], x['id'])):
         pid = item['part_id']
@@ -274,7 +324,10 @@ def validate(data, root, as_of):
     for item in reviews.values():
         if item['kind'] == 'remedial':
             require(item['trigger_gap_id'] in gaps and gaps[item['trigger_gap_id']]['part_id'] == item['part_id'], '补缺触发记录不一致')
-    return {'valid': True, 'diagnosis_complete': complete, 'completed_lessons': len(completed),
+    return {'valid': True, 'diagnosis_mode': mode, 'diagnosis_complete': complete,
+            'completed_lessons': len(completed),
+            'verified_capstones': sum(p['kind'] == 'capstone' and p['status'] == 'verified'
+                                     for p in projects.values()),
             'routine_review_counts': counts, 'open_gaps': sum(g['status'] == 'open' for g in gaps.values())}
 
 
@@ -360,6 +413,8 @@ def main():
     init = subs.add_parser('init')
     init.add_argument('--topic', required=True); init.add_argument('--track', choices=TRACKS, required=True)
     init.add_argument('--job-seeking', action='store_true', help='明确面向某职业求职时使用，须配合 --track career')
+    init.add_argument('--diagnosis-mode', choices=('adaptive-two', 'legacy-five'), default='adaptive-two',
+                      help='新课程默认两轮自适应诊断；旧课程五轮可显式选 legacy-five')
     init.add_argument('--date', required=True); init.add_argument('--out', type=Path, required=True)
     for name in ('validate', 'report'):
         sub = subs.add_parser(name); sub.add_argument('program', type=Path)
@@ -370,7 +425,7 @@ def main():
     try:
         if args.command == 'init':
             require(not args.out.exists(), '状态已存在，不能覆盖已有历史')
-            data = initialize(args.topic, args.track, day(args.date), args.job_seeking)
+            data = initialize(args.topic, args.track, day(args.date), args.job_seeking, args.diagnosis_mode)
             args.out.parent.mkdir(parents=True, exist_ok=True)
             with args.out.open('x', encoding='utf-8') as stream:
                 json.dump(data, stream, ensure_ascii=False, indent=2); stream.write('\n')
