@@ -1,22 +1,22 @@
 # 月度状态与每日雷达图工具
 
-需要保存课程进度、检查五轮证据、导出每日雷达图时读取。scripts/learning_cycle.py 仅使用 Python 标准库，不联网、不自动评分、不调用豆包、不发提醒、不启动语音。先用 skill 指定的可用工具完成对应动作，再把真实结果保存给脚本核对。
+需要保存课程进度、检查两轮自适应或历史五轮证据、独立输出项目及每日雷达图时读取。scripts/learning_cycle.py 仅使用 Python 标准库，不联网、不自动评分、不调用豆包、不发提醒、不启动语音。先用 skill 指定的可用工具完成对应动作，再把真实结果保存给脚本核对。
 
 ## 位置与命令
 
 先读 ~/.codex/learning-storage.md。下例的 TOPIC_DIR 替换为已确认的 Obsidian `学习记录/<主题>/`，SKILL_DIR 为当前安装位置，日期为用户当地实际日期。program.json 放主题根目录，它管理月计划和课程状态；旧 learning-state.json 保存题级历史，stage-three 模式不另排复习时间。
 
 ```bash
-python3 "$SKILL_DIR/scripts/learning_cycle.py" init --topic "用户实际主题" --track career --date 2026-10-23 --out "$TOPIC_DIR/program.json"
+python3 "$SKILL_DIR/scripts/learning_cycle.py" init --topic "用户实际主题" --track career --diagnosis-mode adaptive-two --date 2026-10-23 --out "$TOPIC_DIR/program.json"
 python3 "$SKILL_DIR/scripts/learning_cycle.py" validate "$TOPIC_DIR/program.json" --date 2026-10-23
 python3 "$SKILL_DIR/scripts/learning_cycle.py" report "$TOPIC_DIR/program.json" --date 2026-10-23 --out "$TOPIC_DIR/每日/2026-10-23/雷达-01"
 ```
 
-分类 foundational、frontier、career。初始文件只有待诊断状态、月份日历与默认六轴，没有任何作答、成绩、完成项。初始化拒绝覆盖已有状态；报告拒绝覆盖目录，同日新证据用雷达-02 等新快照。每天在学习笔记嵌入实际图像，并给图下注释和下一项行动。
+分类 foundational、frontier、career。初始文件有待诊断状态（默认 adaptive-two）、空核心优先级 priorities、空作业 projects、月份日历与六轴；没有任何真实作答、成绩或完成项。旧五轮记录不自动转换。初始化拒绝覆盖已有状态；报告拒绝覆盖目录，同日新证据用雷达-02 等新快照。每天在学习笔记嵌入实际图像，并给图下注释和下一项行动。
 
 ## program.json 数据约定
 
-schema_version=2。所有 ID 稳定且唯一。原始回答和反馈用真实 Markdown 文件，相对路径不得逃出主题目录；已有旧记录在续学需要时依保存约定保留历史地带入。先保存原话和反馈，再添加证据。工具验证结构和现存文件，**不能证明文件内容是真实回答，也不判断教练评分是否准确**。
+schema_version=2，向后兼容增加 diagnosis.mode、priorities 和 projects；所有 ID 稳定且唯一。原始回答和反馈用真实 Markdown 文件，相对路径不得逃出主题目录；已有旧记录在续学需要时依保存约定保留历史地带入。先保存原话和反馈，再添加证据。工具验证结构和现存文件，**不能证明文件内容是真实回答，也不判断教练评分是否准确**。
 
 | 字段 | 内容 |
 |---|---|
@@ -25,7 +25,9 @@ schema_version=2。所有 ID 稳定且唯一。原始回答和反馈用真实 Ma
 | axes | 六个 id、label、rubric（0–4 五个文字锚点）；按目标校准后同月保持固定，不拿不同维度直接比较 |
 | job_seeking | 是否明确面向某职业求职，布尔值；求职用 true，普通在职技能学习不强制调研 JD |
 | career_research | 仅 job_seeking=true 的求职正式计划必需：真实岗位调研与要求映射摘要，详见下节 |
-| diagnosis | status=pending／complete、rounds；每轮 number、questions 恰好四项、完成后的 summary |
+| diagnosis | status=pending／complete；mode=adaptive-two（默认，两轮，每轮1–4项，第二轮含能力任务）或 legacy-five（历史五轮，每轮四项）；无 mode 的旧文件视为 legacy-five；完成后的 summary |
+| priorities | 新课程正式计划需 2–4 项，含 id、skill、reason、next_output；先确认高杠杆能力与可验证输出 |
+| projects | 新课程每阶段至少两个 kind=small 及一个 kind=capstone；含 id、stage_id、可选 lesson_id、title、objective、decision、acceptance、budget、status 和验收记录；已完成全部独立验收后阶段才可结项 |
 | parts | id、stage_id；用于每部分三遍与遗忘补缺，粒度为知识点或小单元 |
 | lessons | id、stage_id、objective、knowledge_point_ids、practice、minutes、pass_score（默认 3）；正式计划把这些写清 |
 | stages | id、title、lesson_ids、assessment_id、completed_on；尚未完成日期为 null |
@@ -35,7 +37,9 @@ schema_version=2。所有 ID 稳定且唯一。原始回答和反馈用真实 Ma
 | reviews | 每部分常规三遍或额外遗忘补缺的真实完成记录 |
 | gaps | 错误证据、原因、补充内容、练习、复测及 open／resolved |
 
-questions 每项含 id、prompt、kind（profile／ability）和 evidence_id（未答为 null）。profile 是目标条件回答，不给能力分；ability 使用任务或知识证据。前轮未答完不能新增下一轮；二十题均有关联回答与轮次反馈才 complete，未完成月计划保持 provisional。实际回答“不知道”可以记 0 分；明确跳过仍无答题证据，记录理由但不虚构分数。
+questions 每项含 id、prompt、kind（profile／ability）和 evidence_id（未答为 null）。profile 是目标条件回答，不给能力分；ability 使用任务或知识证据。前轮未答完不能新增下一轮。adaptive-two 两轮回答、反馈均完成才 complete，第二轮必须有真实能力任务；legacy-five 五轮各四题完成才 complete。未完成月计划保持 provisional。实际回答“不知道”可以记 0 分；明确跳过仍无答题证据，记录理由但不虚构分数。
+
+projects 的 status 可为 planned、submitted、verified。submitted 须有 artifact_path，指向主题目录内非空 Markdown 产物说明（可以记录外部视频或代码产物的真实路径、运行结果和校验方法）。verified 另需 review_path 与 evidence_ids，所有关联 evidence 必须 support=independent 且 score≥3；这仅验证证据存在及结构，不能自动证明视频、软件或作品质量。阶段完成要求该阶段全部 projects verified，并有独立阶段检验。旧 legacy-five 状态没有此新增约束。
 
 evidence 的 support 为 independent、hinted、reference、ai-assisted；score 为 0–4 或 null；dimensions 如 {"A1":3,"A5":2}，只能填此任务确实观察的维度，不测不填。profile 的 dimensions 为空。kind 常用 profile、diagnostic、daily-test、stage-test、interview、review、remediation。每天雷达图取每轴最近一个有独立证据日期的均值；旧分标日期，辅助表现单列。若不是全部六轴有独立证据，不画闭合面积。
 
@@ -71,15 +75,15 @@ python3 "$SKILL_DIR/scripts/learning_cycle.py" init --topic "用户确认的目�
 
 cycle.planned_on 是实际出计划或修订日期；缺失时兼容为 cycle.start。researched_on 不得晚于 planned_on，两者不得在用户当前日期之后。report_path 与 requirements_map_path 是已有的非空主题内 Markdown 文件。正式课次在知识点、作品和验收处引用要求 ID，具体对应关系保存于岗位能力映射。脚本只核对结构、日期与文件存在，真实岗位内容、匹配程度和映射合理性仍需阅读核对。
 
-续学先根据用户已表达的用途确认 job_seeking，缺字段时默认 false，不从“职业相关”推断用户求职。旧课程明确为职业求职且缺少岗位摘要时，设置 job_seeking=true 并保留所有真实历史与旧计划快照，为后续课程补查岗位并修订计划；资料不足先标 provisional。不重建学习状态、不编造过去做过的调研、不重做已经完成的五轮。普通学科和前沿研究的正式计划无需此字段。
+续学先根据用户已表达的用途确认 job_seeking，缺字段时默认 false，不从“职业相关”推断用户求职。旧课程明确为职业求职且缺少岗位摘要时，设置 job_seeking=true 并保留所有真实历史与旧计划快照，为后续课程补查岗位并修订计划；资料不足先标 provisional。不重建学习状态、不编造过去做过的调研、不重做已经完成的历史诊断。普通学科和前沿研究的正式计划无需此字段。
 
 ## 诊断跨日与正式开始
 
-初始化时的 anchor_date 和月计划先是暂定。若五轮诊断跨了几天，首次正式授课前将 anchor_date 调为实际正式开始日期，并重新生成 cycle 日历；recording_started_on 保留最早诊断日期，原始回答日期不改。一旦已有正式课程进度，继续复用原 anchor_date，不为重排计划重置面试计时。
+初始化时的 anchor_date 和月计划先是暂定。若当前模式的诊断跨了几天，首次正式授课前将 anchor_date 调为实际正式开始日期，并重新生成 cycle 日历；recording_started_on 保留最早诊断日期，原始回答日期不改。一旦已有正式课程进度，继续复用原 anchor_date，不为重排计划重置面试计时。
 
 ## 续学、换月与旧状态
 
-日常先读而不初始化。每次更新前保存必要的旧版本快照或依现有知识库版本机制保留修改；新增实际事件，不把历史数组重置。换月先保存上一月计划快照，再更新 cycle 的开始、结束和每日计划；用 calendar_days(new_start, original_anchor, track) 生成下一月日历，**anchor_date、已做诊断、稳定 parts ID、全部真实证据、阶段、复习与未解缺口均保留**。按旧状态计算尚欠的三遍复习，新课程和阶段用新 ID。无需每月再答五轮，用户目标显著改变再做针对校准。
+日常先读而不初始化。每次更新前保存必要的旧版本快照或依现有知识库版本机制保留修改；新增实际事件，不把历史数组重置。换月先保存上一月计划快照，再更新 cycle 的开始、结束和每日计划；用 calendar_days(new_start, original_anchor, track) 生成下一月日历，**anchor_date、已做诊断、稳定 parts ID、全部真实证据、阶段、复习与未解缺口均保留**。按旧状态计算尚欠的三遍复习，新课程和阶段用新 ID。无需每月重做诊断，用户目标显著改变再做针对校准。
 
 旧题级初始化时显式用：
 
