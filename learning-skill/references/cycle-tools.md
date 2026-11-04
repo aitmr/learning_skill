@@ -75,11 +75,11 @@ python3 "$SKILL_DIR/scripts/learning_cycle.py" init --topic "用户确认的目�
 
 cycle.planned_on 是实际出计划或修订日期；缺失时兼容为 cycle.start。researched_on 不得晚于 planned_on，两者不得在用户当前日期之后。report_path 与 requirements_map_path 是已有的非空主题内 Markdown 文件。正式课次在知识点、作品和验收处引用要求 ID，具体对应关系保存于岗位能力映射。脚本只核对结构、日期与文件存在，真实岗位内容、匹配程度和映射合理性仍需阅读核对。
 
-续学先根据用户已表达的用途确认 job_seeking，缺字段时默认 false，不从“职业相关”推断用户求职。旧课程明确为职业求职且缺少岗位摘要时，设置 job_seeking=true 并保留所有真实历史与旧计划快照，为后续课程补查岗位并修订计划；资料不足先标 provisional。不重建学习状态、不编造过去做过的调研、不重做已经完成的五轮。普通学科和前沿研究的正式计划无需此字段。
+续学先根据用户已表达的用途确认 job_seeking，缺字段时默认 false，不从“职业相关”推断用户求职。旧课程明确为职业求职且缺少岗位摘要时，设置 job_seeking=true 并保留所有真实历史与旧计划快照，为后续课程补查岗位并修订计划；资料不足先标 provisional。不重建学习状态、不编造过去做过的调研、不重做已经完成的历史诊断。普通学科和前沿研究的正式计划无需此字段。
 
 ## 诊断跨日与正式开始
 
-初始化时的 anchor_date 和月计划先是暂定。若五轮诊断跨了几天，首次正式授课前将 anchor_date 调为实际正式开始日期，并重新生成 cycle 日历；recording_started_on 保留最早诊断日期，原始回答日期不改。一旦已有正式课程进度，继续复用原 anchor_date，不为重排计划重置面试计时。
+初始化时的 anchor_date 和月计划先是暂定。若当前模式的诊断跨了几天，首次正式授课前将 anchor_date 调为实际正式开始日期，并重新生成 cycle 日历；recording_started_on 保留最早诊断日期，原始回答日期不改。一旦已有正式课程进度，继续复用原 anchor_date，不为重排计划重置面试计时。
 
 ## 续学、换月与旧状态
 
